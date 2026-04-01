@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { FantraxClient } from "../client.js";
-import type { ToolResponse } from "../types.js";
+import type { FantraxClient } from "../client";
+import type { ToolResponse } from "../types";
 
 function toJson(data: unknown): ToolResponse {
   return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
