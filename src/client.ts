@@ -1,3 +1,5 @@
+import playerIds from "./player-ids.json" assert { type: "json" };
+
 const PUBLIC_BASE = "https://www.fantrax.com/fxea/general";
 
 export class FantraxClient {
@@ -47,31 +49,24 @@ export class FantraxClient {
     return this.get("getAdp", params);
   }
 
-  async getPlayerIds(): Promise<unknown> {
-    return this.get("getPlayerIds", { sport: "MLB" });
-  }
-
   async getFreeAgents(): Promise<unknown> {
-    const [leagueInfoData, playerIdsData] = await Promise.all([
-      this.getLeagueInfo(),
-      this.getPlayerIds(),
-    ]);
+    const leagueInfoData = await this.getLeagueInfo();
 
     const leagueInfo = leagueInfoData as {
       playerInfo: Record<string, { status: string; eligiblePos: string }>;
     };
-    const playerIds = playerIdsData as Record<string, {
+    const players = playerIds as unknown as Record<string, {
       name: string;
-      team: string;
+      team?: string;
       position: string;
     }>;
 
     return Object.entries(leagueInfo.playerInfo)
       .filter(([, p]) => p.status === "FA")
       .flatMap(([id, p]) => {
-        const player = playerIds[id];
+        const player = players[id];
         if (!player) return [];
-        return [{ id, name: player.name, team: player.team, position: player.position, eligiblePositions: p.eligiblePos }];
+        return [{ id, name: player.name, team: player.team ?? null, position: player.position, eligiblePositions: p.eligiblePos }];
       });
   }
 
