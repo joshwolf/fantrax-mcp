@@ -12,42 +12,18 @@ export async function getLeagueInfoHandler(client: FantraxClient): Promise<ToolR
   return toJson(data);
 }
 
-export async function getStandingsHandler(
-  client: FantraxClient,
-  view?: string,
-): Promise<ToolResponse> {
-  const data = await client.getStandings(view);
+export async function getStandingsHandler(client: FantraxClient): Promise<ToolResponse> {
+  const data = await client.getStandings();
   return toJson(data);
 }
 
-export async function getRosterHandler(
-  client: FantraxClient,
-  teamId: string,
-  scoringPeriod?: number,
-): Promise<ToolResponse> {
-  const data = await client.getRoster(teamId, scoringPeriod);
+export async function getAllRostersHandler(client: FantraxClient): Promise<ToolResponse> {
+  const data = await client.getAllRosters();
   return toJson(data);
 }
 
-export async function getScoringHandler(
-  client: FantraxClient,
-  date?: string,
-  period?: number,
-): Promise<ToolResponse> {
-  const data = await client.getScoring(date, period);
-  return toJson(data);
-}
-
-export async function getTransactionsHandler(
-  client: FantraxClient,
-  maxResults?: number,
-): Promise<ToolResponse> {
-  const data = await client.getTransactions(maxResults);
-  return toJson(data);
-}
-
-export async function getTradeBlocksHandler(client: FantraxClient): Promise<ToolResponse> {
-  const data = await client.getTradeBlocks();
+export async function getFreeAgentsHandler(client: FantraxClient): Promise<ToolResponse> {
+  const data = await client.getFreeAgents();
   return toJson(data);
 }
 
@@ -61,57 +37,43 @@ export async function getPlayerInfoHandler(
   return toJson(data);
 }
 
-export async function getPlayerIdsHandler(client: FantraxClient): Promise<ToolResponse> {
-  const data = await client.getPlayerIds();
+export async function getScoringCategoriesHandler(client: FantraxClient): Promise<ToolResponse> {
+  const data = await client.getScoringCategories();
   return toJson(data);
 }
 
 export function registerAtomicTools(server: McpServer, client: FantraxClient): void {
-  server.tool("get_league_info", "Get fantasy league info including teams and settings", {}, () =>
-    getLeagueInfoHandler(client),
+  server.tool(
+    "get_league_info",
+    "Get fantasy league info including teams, roster settings, and player statuses",
+    {},
+    () => getLeagueInfoHandler(client),
   );
 
   server.tool(
     "get_standings",
-    "Get current league standings",
-    { view: z.string().optional().describe("Standings view type") },
-    ({ view }) => getStandingsHandler(client, view),
+    "Get current league standings with rank, points, and win percentage per team",
+    {},
+    () => getStandingsHandler(client),
   );
 
   server.tool(
-    "get_roster",
-    "Get roster info for a specific team",
-    {
-      teamId: z.string().describe("The Fantrax team ID"),
-      scoringPeriod: z.number().int().optional().describe("Scoring period number"),
-    },
-    ({ teamId, scoringPeriod }) => getRosterHandler(client, teamId, scoringPeriod),
+    "get_all_rosters",
+    "Get every team's current roster in the league, including player IDs, positions, and salary",
+    {},
+    () => getAllRostersHandler(client),
   );
 
   server.tool(
-    "get_scoring",
-    "Get live scoring stats for a date or period",
-    {
-      date: z.string().optional().describe("Date in YYYYMMDD format"),
-      period: z.number().int().optional().describe("Scoring period number"),
-    },
-    ({ date, period }) => getScoringHandler(client, date, period),
-  );
-
-  server.tool(
-    "get_transactions",
-    "Get pending and historical transactions",
-    { maxResults: z.number().int().optional().describe("Maximum number of results to return") },
-    ({ maxResults }) => getTransactionsHandler(client, maxResults),
-  );
-
-  server.tool("get_trade_blocks", "Get all active trade blocks in the league", {}, () =>
-    getTradeBlocksHandler(client),
+    "get_free_agents",
+    "Get all available free agents with name, MLB team, position, and fantasy-eligible positions. Use this to find add candidates.",
+    {},
+    () => getFreeAgentsHandler(client),
   );
 
   server.tool(
     "get_player_info",
-    "Get MLB player ADP data (no auth required)",
+    "Get MLB player ADP data — useful for ranking and valuing players",
     {
       position: z.string().optional().describe("Filter by position (e.g. SP, OF, 1B)"),
       limit: z.number().int().optional().describe("Number of players to return"),
@@ -121,9 +83,9 @@ export function registerAtomicTools(server: McpServer, client: FantraxClient): v
   );
 
   server.tool(
-    "get_player_ids",
-    "Get all MLB player IDs from Fantrax (no auth required)",
+    "get_scoring_categories",
+    "Get the scoring categories for this league — the specific stats that count toward standings (e.g. HR, OBP, TB, SB for hitting; K, ERA, WHIP, K/BB, W, SV for pitching). Always call this when evaluating or comparing players so recommendations reflect what actually matters in this league.",
     {},
-    () => getPlayerIdsHandler(client),
+    () => getScoringCategoriesHandler(client),
   );
 }

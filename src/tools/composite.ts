@@ -22,36 +22,27 @@ function filterPlayersByName(players: unknown, name: string): unknown {
 export async function getTeamOverviewHandler(
   client: FantraxClient,
   teamId: string,
-  scoringPeriod?: number,
 ): Promise<ToolResponse> {
-  const [roster, scoring, standings] = await Promise.all([
-    client.getRoster(teamId, scoringPeriod),
-    client.getScoring(),
+  const [rostersData, standings, scoringCategories] = await Promise.all([
+    client.getAllRosters(),
     client.getStandings(),
+    client.getScoringCategories(),
   ]);
 
-  return toJson({ teamId, roster, scoring, standings });
+  const rosters = rostersData as { rosters?: Record<string, unknown> };
+  const teamRoster = rosters.rosters?.[teamId] ?? null;
+
+  return toJson({ teamId, roster: teamRoster, standings, scoringCategories });
 }
 
-export async function evaluateTradeTargetsHandler(client: FantraxClient): Promise<ToolResponse> {
-  const [tradeBlocks, playerInfo] = await Promise.all([
-    client.getTradeBlocks(),
+export async function getWaiverCandidatesHandler(client: FantraxClient): Promise<ToolResponse> {
+  const [freeAgents, playerInfo, scoringCategories] = await Promise.all([
+    client.getFreeAgents(),
     client.getPlayerInfo(),
+    client.getScoringCategories(),
   ]);
 
-  return toJson({ tradeBlocks, playerInfo });
-}
-
-export async function getWaiverCandidatesHandler(
-  client: FantraxClient,
-  maxResults?: number,
-): Promise<ToolResponse> {
-  const [transactions, playerInfo] = await Promise.all([
-    client.getTransactions(maxResults),
-    client.getPlayerInfo(),
-  ]);
-
-  return toJson({ transactions, playerInfo });
+  return toJson({ scoringCategories, freeAgents, playerInfo });
 }
 
 export async function comparePlayersHandler(
@@ -59,42 +50,41 @@ export async function comparePlayersHandler(
   player1: string,
   player2: string,
 ): Promise<ToolResponse> {
-  const allPlayers = await client.getPlayerInfo();
+  const [allPlayers, scoringCategories] = await Promise.all([
+    client.getPlayerInfo(),
+    client.getScoringCategories(),
+  ]);
 
   const player1Data = filterPlayersByName(allPlayers, player1);
   const player2Data = filterPlayersByName(allPlayers, player2);
 
-  return toJson({ player1: { name: player1, data: player1Data }, player2: { name: player2, data: player2Data } });
+  return toJson({
+    scoringCategories,
+    player1: { name: player1, data: player1Data },
+    player2: { name: player2, data: player2Data },
+  });
 }
 
 export function registerCompositeTools(server: McpServer, client: FantraxClient): void {
   server.tool(
     "get_team_overview",
-    "Get a full snapshot of a team's roster, recent scoring, and standings position",
+    "Get a snapshot of a specific team: their roster, league standings, and the league's scoring categories",
     {
       teamId: z.string().describe("The Fantrax team ID"),
-      scoringPeriod: z.number().int().optional().describe("Scoring period number"),
     },
-    ({ teamId, scoringPeriod }) => getTeamOverviewHandler(client, teamId, scoringPeriod),
-  );
-
-  server.tool(
-    "evaluate_trade_targets",
-    "Get trade block players enriched with ADP data",
-    {},
-    () => evaluateTradeTargetsHandler(client),
+    ({ teamId }) => getTeamOverviewHandler(client, teamId),
   );
 
   server.tool(
     "get_waiver_candidates",
-    "Get pending waiver wire pickups enriched with ADP context",
-    { maxResults: z.number().int().optional().describe("Maximum number of results to return") },
-    ({ maxResults }) => getWaiverCandidatesHandler(client, maxResults),
+    "Get all free agents enriched with ADP context and league scoring categories — use this to find and rank add/drop candidates",
+    {},
+    () => getWaiverCandidatesHandler(client),
   );
 
   server.tool(
     "compare_players",
-    "Compare two MLB players side-by-side using ADP, position, and stats",
+    "Compare two MLB players side-by-side using ADP, position, and league scoring categories",
     {
       player1: z.string().describe("Name of the first player"),
       player2: z.string().describe("Name of the second player"),

@@ -2,25 +2,27 @@ import { describe, it, expect, vi } from "vitest";
 import {
   getLeagueInfoHandler,
   getStandingsHandler,
-  getRosterHandler,
-  getScoringHandler,
-  getTransactionsHandler,
-  getTradeBlocksHandler,
+  getAllRostersHandler,
+  getFreeAgentsHandler,
   getPlayerInfoHandler,
-  getPlayerIdsHandler,
+  getScoringCategoriesHandler,
 } from "../src/tools/atomic.js";
 import type { FantraxClient } from "../src/client.js";
 
+const mockScoringCategories = {
+  HITTING: { R: { Default: "1.0" }, HR: { Default: "1.0" } },
+  PITCHING: { K: { Default: "1.0" }, ERA: { Default: "1.0" } },
+};
+
 function makeClient(overrides: Partial<Record<keyof FantraxClient, unknown>> = {}): FantraxClient {
   return {
-    getLeagueInfo: vi.fn().mockResolvedValue({ league: "test" }),
-    getStandings: vi.fn().mockResolvedValue({ standings: [] }),
-    getRoster: vi.fn().mockResolvedValue({ roster: [] }),
-    getScoring: vi.fn().mockResolvedValue({ scoring: [] }),
-    getTransactions: vi.fn().mockResolvedValue({ pending: [], history: [] }),
-    getTradeBlocks: vi.fn().mockResolvedValue({ blocks: [] }),
-    getPlayerInfo: vi.fn().mockResolvedValue([{ name: "Player A" }]),
-    getPlayerIds: vi.fn().mockResolvedValue({ ids: [] }),
+    getLeagueInfo: vi.fn().mockResolvedValue({ leagueName: "Test League" }),
+    getStandings: vi.fn().mockResolvedValue([{ teamName: "Team A", rank: 1 }]),
+    getAllRosters: vi.fn().mockResolvedValue({ rosters: { "team-1": { teamName: "Team A", rosterItems: [] } } }),
+    getFreeAgents: vi.fn().mockResolvedValue([{ id: "p1", name: "Player, Alpha", team: "NYY", position: "OF", eligiblePositions: "OF,UT" }]),
+    getPlayerInfo: vi.fn().mockResolvedValue([{ name: "Player A", adp: 10 }]),
+    getPlayerIds: vi.fn().mockResolvedValue({ "p1": { name: "Player, Alpha" } }),
+    getScoringCategories: vi.fn().mockResolvedValue(mockScoringCategories),
     ...overrides,
   } as unknown as FantraxClient;
 }
@@ -31,14 +33,11 @@ describe("getLeagueInfoHandler", () => {
     const result = await getLeagueInfoHandler(client);
 
     expect(result.content[0].type).toBe("text");
-    expect(JSON.parse(result.content[0].text)).toEqual({ league: "test" });
+    expect(JSON.parse(result.content[0].text)).toEqual({ leagueName: "Test League" });
   });
 
   it("propagates errors from the client", async () => {
-    const client = makeClient({
-      getLeagueInfo: vi.fn().mockRejectedValue(new Error("API error")),
-    });
-
+    const client = makeClient({ getLeagueInfo: vi.fn().mockRejectedValue(new Error("API error")) });
     await expect(getLeagueInfoHandler(client)).rejects.toThrow("API error");
   });
 });
@@ -49,127 +48,59 @@ describe("getStandingsHandler", () => {
     const result = await getStandingsHandler(client);
 
     expect(result.content[0].type).toBe("text");
-    expect(JSON.parse(result.content[0].text)).toEqual({ standings: [] });
-  });
-
-  it("passes view param to the client", async () => {
-    const client = makeClient();
-    await getStandingsHandler(client, "overall");
-
-    expect(client.getStandings).toHaveBeenCalledWith("overall");
+    const parsed = JSON.parse(result.content[0].text);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed[0].rank).toBe(1);
   });
 
   it("propagates errors from the client", async () => {
-    const client = makeClient({
-      getStandings: vi.fn().mockRejectedValue(new Error("API error")),
-    });
-
+    const client = makeClient({ getStandings: vi.fn().mockRejectedValue(new Error("API error")) });
     await expect(getStandingsHandler(client)).rejects.toThrow("API error");
   });
 });
 
-describe("getRosterHandler", () => {
-  it("returns roster data as JSON text content", async () => {
+describe("getAllRostersHandler", () => {
+  it("returns all rosters as JSON text content", async () => {
     const client = makeClient();
-    const result = await getRosterHandler(client, "team-1");
-
-    expect(result.content[0].type).toBe("text");
-    expect(JSON.parse(result.content[0].text)).toEqual({ roster: [] });
-  });
-
-  it("passes teamId and scoringPeriod to the client", async () => {
-    const client = makeClient();
-    await getRosterHandler(client, "team-1", 3);
-
-    expect(client.getRoster).toHaveBeenCalledWith("team-1", 3);
-  });
-
-  it("propagates errors from the client", async () => {
-    const client = makeClient({
-      getRoster: vi.fn().mockRejectedValue(new Error("API error")),
-    });
-
-    await expect(getRosterHandler(client, "team-1")).rejects.toThrow("API error");
-  });
-});
-
-describe("getScoringHandler", () => {
-  it("returns scoring data as JSON text content", async () => {
-    const client = makeClient();
-    const result = await getScoringHandler(client);
-
-    expect(result.content[0].type).toBe("text");
-    expect(JSON.parse(result.content[0].text)).toEqual({ scoring: [] });
-  });
-
-  it("passes date and period to the client", async () => {
-    const client = makeClient();
-    await getScoringHandler(client, "20260401", 2);
-
-    expect(client.getScoring).toHaveBeenCalledWith("20260401", 2);
-  });
-
-  it("propagates errors from the client", async () => {
-    const client = makeClient({
-      getScoring: vi.fn().mockRejectedValue(new Error("API error")),
-    });
-
-    await expect(getScoringHandler(client)).rejects.toThrow("API error");
-  });
-});
-
-describe("getTransactionsHandler", () => {
-  it("returns transactions as JSON text content", async () => {
-    const client = makeClient();
-    const result = await getTransactionsHandler(client);
+    const result = await getAllRostersHandler(client);
 
     expect(result.content[0].type).toBe("text");
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed).toHaveProperty("pending");
-    expect(parsed).toHaveProperty("history");
-  });
-
-  it("passes maxResults to the client", async () => {
-    const client = makeClient();
-    await getTransactionsHandler(client, 10);
-
-    expect(client.getTransactions).toHaveBeenCalledWith(10);
+    expect(parsed).toHaveProperty("rosters");
+    expect(parsed.rosters).toHaveProperty("team-1");
   });
 
   it("propagates errors from the client", async () => {
-    const client = makeClient({
-      getTransactions: vi.fn().mockRejectedValue(new Error("API error")),
-    });
-
-    await expect(getTransactionsHandler(client)).rejects.toThrow("API error");
+    const client = makeClient({ getAllRosters: vi.fn().mockRejectedValue(new Error("API error")) });
+    await expect(getAllRostersHandler(client)).rejects.toThrow("API error");
   });
 });
 
-describe("getTradeBlocksHandler", () => {
-  it("returns trade blocks as JSON text content", async () => {
+describe("getFreeAgentsHandler", () => {
+  it("returns free agents list as JSON text content", async () => {
     const client = makeClient();
-    const result = await getTradeBlocksHandler(client);
+    const result = await getFreeAgentsHandler(client);
 
     expect(result.content[0].type).toBe("text");
-    expect(JSON.parse(result.content[0].text)).toEqual({ blocks: [] });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(Array.isArray(parsed)).toBe(true);
+    expect(parsed[0].name).toBe("Player, Alpha");
+    expect(parsed[0].eligiblePositions).toBe("OF,UT");
   });
 
   it("propagates errors from the client", async () => {
-    const client = makeClient({
-      getTradeBlocks: vi.fn().mockRejectedValue(new Error("API error")),
-    });
-
-    await expect(getTradeBlocksHandler(client)).rejects.toThrow("API error");
+    const client = makeClient({ getFreeAgents: vi.fn().mockRejectedValue(new Error("API error")) });
+    await expect(getFreeAgentsHandler(client)).rejects.toThrow("API error");
   });
 });
 
 describe("getPlayerInfoHandler", () => {
-  it("returns player info as JSON text content", async () => {
+  it("returns player ADP data as JSON text content", async () => {
     const client = makeClient();
     const result = await getPlayerInfoHandler(client);
 
     expect(result.content[0].type).toBe("text");
-    expect(JSON.parse(result.content[0].text)).toEqual([{ name: "Player A" }]);
+    expect(JSON.parse(result.content[0].text)).toEqual([{ name: "Player A", adp: 10 }]);
   });
 
   it("passes position, limit, and order to the client", async () => {
@@ -180,28 +111,30 @@ describe("getPlayerInfoHandler", () => {
   });
 
   it("propagates errors from the client", async () => {
-    const client = makeClient({
-      getPlayerInfo: vi.fn().mockRejectedValue(new Error("API error")),
-    });
-
+    const client = makeClient({ getPlayerInfo: vi.fn().mockRejectedValue(new Error("API error")) });
     await expect(getPlayerInfoHandler(client)).rejects.toThrow("API error");
   });
 });
 
-describe("getPlayerIdsHandler", () => {
-  it("returns player IDs as JSON text content", async () => {
+describe("getScoringCategoriesHandler", () => {
+  it("returns scoring categories as JSON text content", async () => {
     const client = makeClient();
-    const result = await getPlayerIdsHandler(client);
+    const result = await getScoringCategoriesHandler(client);
 
     expect(result.content[0].type).toBe("text");
-    expect(JSON.parse(result.content[0].text)).toEqual({ ids: [] });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toHaveProperty("HITTING");
+    expect(parsed).toHaveProperty("PITCHING");
+  });
+
+  it("returns empty object when no categories present", async () => {
+    const client = makeClient({ getScoringCategories: vi.fn().mockResolvedValue({}) });
+    const result = await getScoringCategoriesHandler(client);
+    expect(JSON.parse(result.content[0].text)).toEqual({});
   });
 
   it("propagates errors from the client", async () => {
-    const client = makeClient({
-      getPlayerIds: vi.fn().mockRejectedValue(new Error("API error")),
-    });
-
-    await expect(getPlayerIdsHandler(client)).rejects.toThrow("API error");
+    const client = makeClient({ getScoringCategories: vi.fn().mockRejectedValue(new Error("API error")) });
+    await expect(getScoringCategoriesHandler(client)).rejects.toThrow("API error");
   });
 });

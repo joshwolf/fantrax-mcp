@@ -18,7 +18,6 @@ function makeFetchError(status: number, body: string): typeof fetch {
 }
 
 beforeEach(() => {
-  vi.stubEnv("FANTRAX_SESSION_COOKIE", "test-cookie");
   vi.stubEnv("FANTRAX_LEAGUE_ID", "test-league");
 });
 
@@ -28,192 +27,68 @@ afterEach(() => {
 });
 
 describe("FantraxClient constructor", () => {
-  it("throws if FANTRAX_SESSION_COOKIE is missing", () => {
-    vi.stubEnv("FANTRAX_SESSION_COOKIE", "");
-    expect(() => new FantraxClient()).toThrow("FANTRAX_SESSION_COOKIE");
-  });
-
   it("throws if FANTRAX_LEAGUE_ID is missing", () => {
     vi.stubEnv("FANTRAX_LEAGUE_ID", "");
     expect(() => new FantraxClient()).toThrow("FANTRAX_LEAGUE_ID");
   });
 
-  it("constructs successfully when both env vars are set", () => {
+  it("constructs successfully when env var is set", () => {
     expect(() => new FantraxClient()).not.toThrow();
   });
 });
 
 describe("FantraxClient.getLeagueInfo", () => {
-  it("POSTs to the correct URL with Cookie header", async () => {
-    const mockFetch = makeFetchOk({ league: "test" });
+  it("GETs from the official public API with leagueId", async () => {
+    const mockFetch = makeFetchOk({ leagueName: "test" });
     vi.stubGlobal("fetch", mockFetch);
 
     const client = new FantraxClient();
     await client.getLeagueInfo();
 
-    const [url, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    expect(url).toBe("https://www.fantrax.com/fxpa/req?leagueId=test-league");
-    expect((options.headers as Record<string, string>)["Cookie"]).toBe("test-cookie");
-  });
-
-  it("sends the getFantasyLeagueInfo method in the POST body", async () => {
-    const mockFetch = makeFetchOk({});
-    vi.stubGlobal("fetch", mockFetch);
-
-    const client = new FantraxClient();
-    await client.getLeagueInfo();
-
-    const [, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    const body = JSON.parse(options.body as string);
-    expect(body.msgs[0].method).toBe("getFantasyLeagueInfo");
+    const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toContain("fantrax.com/fxea/general/getLeagueInfo");
+    expect(url).toContain("leagueId=test-league");
   });
 
   it("returns the parsed JSON response", async () => {
-    vi.stubGlobal("fetch", makeFetchOk({ data: "leagueData" }));
+    vi.stubGlobal("fetch", makeFetchOk({ leagueName: "My League" }));
     const client = new FantraxClient();
     const result = await client.getLeagueInfo();
-    expect(result).toEqual({ data: "leagueData" });
+    expect(result).toEqual({ leagueName: "My League" });
   });
 
   it("throws with status code on HTTP error", async () => {
-    vi.stubGlobal("fetch", makeFetchError(401, "Unauthorized"));
+    vi.stubGlobal("fetch", makeFetchError(404, "Not Found"));
     const client = new FantraxClient();
-    await expect(client.getLeagueInfo()).rejects.toThrow("401");
+    await expect(client.getLeagueInfo()).rejects.toThrow("404");
   });
 });
 
 describe("FantraxClient.getStandings", () => {
-  it("sends getStandings method without view param by default", async () => {
-    const mockFetch = makeFetchOk({});
+  it("GETs from the official public API with leagueId", async () => {
+    const mockFetch = makeFetchOk([]);
     vi.stubGlobal("fetch", mockFetch);
 
     const client = new FantraxClient();
     await client.getStandings();
 
-    const [, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    const body = JSON.parse(options.body as string);
-    expect(body.msgs[0].method).toBe("getStandings");
-    expect(body.msgs[0].data).toEqual({});
-  });
-
-  it("includes view in data when provided", async () => {
-    const mockFetch = makeFetchOk({});
-    vi.stubGlobal("fetch", mockFetch);
-
-    const client = new FantraxClient();
-    await client.getStandings("overall");
-
-    const [, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    const body = JSON.parse(options.body as string);
-    expect(body.msgs[0].data.view).toBe("overall");
+    const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toContain("fantrax.com/fxea/general/getStandings");
+    expect(url).toContain("leagueId=test-league");
   });
 });
 
-describe("FantraxClient.getRoster", () => {
-  it("sends getTeamRosterInfo with teamId", async () => {
-    const mockFetch = makeFetchOk({});
+describe("FantraxClient.getAllRosters", () => {
+  it("GETs from the official public API with leagueId", async () => {
+    const mockFetch = makeFetchOk({ rosters: {} });
     vi.stubGlobal("fetch", mockFetch);
 
     const client = new FantraxClient();
-    await client.getRoster("team-123");
+    await client.getAllRosters();
 
-    const [, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    const body = JSON.parse(options.body as string);
-    expect(body.msgs[0].method).toBe("getTeamRosterInfo");
-    expect(body.msgs[0].data.teamId).toBe("team-123");
-  });
-
-  it("includes scoringPeriod when provided", async () => {
-    const mockFetch = makeFetchOk({});
-    vi.stubGlobal("fetch", mockFetch);
-
-    const client = new FantraxClient();
-    await client.getRoster("team-123", 5);
-
-    const [, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    const body = JSON.parse(options.body as string);
-    expect(body.msgs[0].data.scoringPeriod).toBe(5);
-  });
-});
-
-describe("FantraxClient.getScoring", () => {
-  it("sends getLiveScoringStats with no params by default", async () => {
-    const mockFetch = makeFetchOk({});
-    vi.stubGlobal("fetch", mockFetch);
-
-    const client = new FantraxClient();
-    await client.getScoring();
-
-    const [, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    const body = JSON.parse(options.body as string);
-    expect(body.msgs[0].method).toBe("getLiveScoringStats");
-    expect(body.msgs[0].data).toEqual({});
-  });
-
-  it("includes date and period when provided", async () => {
-    const mockFetch = makeFetchOk({});
-    vi.stubGlobal("fetch", mockFetch);
-
-    const client = new FantraxClient();
-    await client.getScoring("20260401", 3);
-
-    const [, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    const body = JSON.parse(options.body as string);
-    expect(body.msgs[0].data.date).toBe("20260401");
-    expect(body.msgs[0].data.period).toBe(3);
-  });
-});
-
-describe("FantraxClient.getTransactions", () => {
-  it("calls both getPendingTransactions and getTransactionDetailsHistory", async () => {
-    const mockFetch = makeFetchOk({});
-    vi.stubGlobal("fetch", mockFetch);
-
-    const client = new FantraxClient();
-    await client.getTransactions();
-
-    const calls = (mockFetch as ReturnType<typeof vi.fn>).mock.calls as Array<[string, RequestInit]>;
-    const methods = calls.map((c) => JSON.parse(c[1].body as string).msgs[0].method);
-    expect(methods).toContain("getPendingTransactions");
-    expect(methods).toContain("getTransactionDetailsHistory");
-  });
-
-  it("returns pending and history keyed separately", async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ pending: true }), text: () => Promise.resolve("") })
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ history: true }), text: () => Promise.resolve("") });
-    vi.stubGlobal("fetch", mockFetch);
-
-    const client = new FantraxClient();
-    const result = await client.getTransactions();
-
-    expect(result).toHaveProperty("pending");
-    expect(result).toHaveProperty("history");
+    const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toContain("fantrax.com/fxea/general/getTeamRosters");
+    expect(url).toContain("leagueId=test-league");
   });
 });
 
@@ -264,19 +139,96 @@ describe("FantraxClient.getPlayerIds", () => {
   });
 });
 
-describe("FantraxClient.getTradeBlocks", () => {
-  it("sends getTradeBlocks method", async () => {
-    const mockFetch = makeFetchOk({});
-    vi.stubGlobal("fetch", mockFetch);
+describe("FantraxClient.getFreeAgents", () => {
+  const mockLeagueInfo = {
+    playerInfo: {
+      "id-001": { status: "FA", eligiblePos: "OF,UT" },
+      "id-002": { status: "T", eligiblePos: "SP" },
+      "id-003": { status: "FA", eligiblePos: "1B,UT" },
+      "id-004": { status: "FA", eligiblePos: "SS,MI" },
+    },
+  };
+
+  const mockPlayerIds = {
+    "id-001": { name: "Player, Alpha", team: "NYY", position: "OF" },
+    "id-003": { name: "Player, Beta", team: "LAD", position: "1B" },
+    // id-004 intentionally missing from playerIds (no name data)
+  };
+
+  it("returns only players with FA status that exist in playerIds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockLeagueInfo), text: () => Promise.resolve("") })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockPlayerIds), text: () => Promise.resolve("") }),
+    );
 
     const client = new FantraxClient();
-    await client.getTradeBlocks();
+    const result = await client.getFreeAgents() as Array<Record<string, string>>;
 
-    const [, options] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    const body = JSON.parse(options.body as string);
-    expect(body.msgs[0].method).toBe("getTradeBlocks");
+    expect(result).toHaveLength(2);
+    expect(result.map((p) => p.id)).toContain("id-001");
+    expect(result.map((p) => p.id)).toContain("id-003");
+    expect(result.map((p) => p.id)).not.toContain("id-002");
+  });
+
+  it("includes name, team, position, and eligiblePositions for each FA", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockLeagueInfo), text: () => Promise.resolve("") })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockPlayerIds), text: () => Promise.resolve("") }),
+    );
+
+    const client = new FantraxClient();
+    const result = await client.getFreeAgents() as Array<Record<string, string>>;
+    const alpha = result.find((p) => p.id === "id-001");
+
+    expect(alpha?.name).toBe("Player, Alpha");
+    expect(alpha?.team).toBe("NYY");
+    expect(alpha?.position).toBe("OF");
+    expect(alpha?.eligiblePositions).toBe("OF,UT");
+  });
+
+  it("excludes FA players with no matching entry in playerIds", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockLeagueInfo), text: () => Promise.resolve("") })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockPlayerIds), text: () => Promise.resolve("") }),
+    );
+
+    const client = new FantraxClient();
+    const result = await client.getFreeAgents() as Array<Record<string, string>>;
+
+    expect(result.map((p) => p.id)).not.toContain("id-004");
+  });
+});
+
+describe("FantraxClient.getScoringCategories", () => {
+  it("extracts scoringCategories from leagueInfo scoringSystem", async () => {
+    const mockLeagueInfo = {
+      scoringSystem: {
+        scoringCategories: {
+          HITTING: { HR: { Default: "1.0" }, R: { Default: "1.0" } },
+          PITCHING: { K: { Default: "1.0" } },
+        },
+      },
+    };
+
+    vi.stubGlobal("fetch", makeFetchOk(mockLeagueInfo));
+    const client = new FantraxClient();
+    const result = await client.getScoringCategories() as Record<string, unknown>;
+
+    expect(result).toHaveProperty("HITTING");
+    expect(result).toHaveProperty("PITCHING");
+    expect(result).not.toHaveProperty("scoringSystem");
+  });
+
+  it("returns empty object when scoringSystem is absent", async () => {
+    vi.stubGlobal("fetch", makeFetchOk({}));
+    const client = new FantraxClient();
+    const result = await client.getScoringCategories();
+    expect(result).toEqual({});
   });
 });
