@@ -152,6 +152,63 @@ describe("FantraxClient.getFreeAgents", () => {
   });
 });
 
+describe("FantraxClient.getTeamRoster", () => {
+  it("returns the roster for the specified teamId", async () => {
+    const mockData = {
+      rosters: {
+        "team-1": { teamName: "My Team", rosterItems: [] },
+        "team-2": { teamName: "Other Team", rosterItems: [] },
+      },
+    };
+    vi.stubGlobal("fetch", makeFetchOk(mockData));
+    const client = new FantraxClient();
+    const result = await client.getTeamRoster("team-1") as Record<string, unknown>;
+    expect(result.teamName).toBe("My Team");
+  });
+
+  it("returns null when teamId is not found in rosters", async () => {
+    vi.stubGlobal("fetch", makeFetchOk({ rosters: {} }));
+    const client = new FantraxClient();
+    const result = await client.getTeamRoster("nonexistent");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when rosters key is missing from response", async () => {
+    vi.stubGlobal("fetch", makeFetchOk({}));
+    const client = new FantraxClient();
+    const result = await client.getTeamRoster("team-1");
+    expect(result).toBeNull();
+  });
+});
+
+describe("FantraxClient.getPlayerIds", () => {
+  it("GETs from the public base URL with sport=MLB", async () => {
+    const mockFetch = makeFetchOk({ "p1": { name: "Henderson, Gunnar" } });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const client = new FantraxClient();
+    await client.getPlayerIds();
+
+    const [url] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(url).toContain("fantrax.com/fxea/general/getPlayerIds");
+    expect(url).toContain("sport=MLB");
+  });
+
+  it("returns the parsed JSON response", async () => {
+    const payload = { "p1": { name: "Henderson, Gunnar" } };
+    vi.stubGlobal("fetch", makeFetchOk(payload));
+    const client = new FantraxClient();
+    const result = await client.getPlayerIds();
+    expect(result).toEqual(payload);
+  });
+
+  it("throws on HTTP error", async () => {
+    vi.stubGlobal("fetch", makeFetchError(500, "Server Error"));
+    const client = new FantraxClient();
+    await expect(client.getPlayerIds()).rejects.toThrow("500");
+  });
+});
+
 describe("FantraxClient.getScoringCategories", () => {
   it("extracts scoringCategories from leagueInfo scoringSystem", async () => {
     const mockLeagueInfo = {

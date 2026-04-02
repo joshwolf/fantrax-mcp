@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "description": "MCP server for Fantrax fantasy baseball",
   "type": "module",
-  "main": "dist/index.js",
   "scripts": {
+    "generate-player-ids": "tsx scripts/generate-player-ids.ts",
+    "prebuild": "tsx scripts/generate-player-ids.ts",
     "build": "next build",
     "dev": "next dev",
     "typecheck": "tsc",

@@ -1,109 +1,107 @@
 # Fantrax MCP Server — Design Spec
 
-**Date:** 2026-04-01
+**Date:** 2026-04-01 (updated 2026-04-02)
 
 ## Context
 
-The goal is a TypeScript MCP server that wraps the Fantrax fantasy baseball API, enabling Claude to read league data and assist with roster management decisions. Fantrax has no official public API or API key system — access is via session cookie and a mix of public GET endpoints and authenticated POST endpoints.
+A TypeScript MCP server that wraps the Fantrax fantasy baseball API, enabling Claude to read league data and assist with roster management decisions. Fantrax has no official public API — all endpoints used here are public GET endpoints (no authentication required).
 
 ## Architecture
 
 Three layers:
 
-1. **`FantraxClient`** (`src/client.ts`) — all HTTP. Reads `FANTRAX_SESSION_COOKIE` and `FANTRAX_LEAGUE_ID` from env. Exposes one method per Fantrax API call. Pure data-fetching; no business logic.
+1. **`FantraxClient`** (`src/client.ts`) — all HTTP. Reads `FANTRAX_LEAGUE_ID` from env. Exposes one method per Fantrax API call. Pure data-fetching; no business logic.
 2. **Tools layer** (`src/tools/atomic.ts`, `src/tools/composite.ts`) — MCP tool definitions and handlers. Atomic tools map 1:1 to client methods. Composite tools call multiple client methods and merge results.
-3. **`index.ts`** — creates the MCP server, registers all tools, starts stdio transport.
+3. **`app/api/[transport]/route.ts`** — Next.js API route that creates the MCP server, registers all tools, and serves via the `mcp-handler` transport (HTTP SSE + POST).
 
 ```
 fantrax-mcp/
+├── app/
+│   └── api/
+│       └── [transport]/
+│           └── route.ts       # MCP HTTP handler (Vercel/Next.js)
 ├── src/
-│   ├── index.ts              # Server entry, tool registration, stdio transport
-│   ├── client.ts             # FantraxClient class
+│   ├── client.ts              # FantraxClient class
 │   ├── tools/
-│   │   ├── atomic.ts         # Atomic tool definitions + handlers
-│   │   └── composite.ts      # Composite tool definitions + handlers
-│   └── types.ts              # Shared TypeScript types
+│   │   ├── atomic.ts          # Atomic tool definitions + handlers
+│   │   └── composite.ts       # Composite tool definitions + handlers
+│   └── types.ts               # Shared TypeScript types and Zod schemas
+├── scripts/
+│   └── generate-player-ids.ts # Build-time script: fetches player IDs, writes src/player-ids.json
 ├── tests/
 │   ├── client.test.ts
 │   ├── atomic.test.ts
 │   └── composite.test.ts
-├── package.json
-└── tsconfig.json
+└── package.json
 ```
 
 ## API Details
 
-**Base URLs:**
-- Public (no auth): `https://www.fantrax.com/fxea/general/`
-- Authenticated (POST): `https://www.fantrax.com/fxpa/req?leagueId={leagueId}`
+**Base URL:** `https://www.fantrax.com/fxea/general/`
 
-**Authentication:** Session cookie (`FANTRAX_SESSION_COOKIE` env var) sent as `Cookie` header on all authenticated requests. The `FantraxClient` constructor throws if env vars are missing.
-
-**Authenticated POST format:**
-```json
-{ "msgs": [{ "method": "methodName", "data": { ...params } }] }
-```
+All endpoints are public GET requests — no authentication, no session cookie required.
 
 **Sport:** MLB only (hardcoded — not a config option).
+
+## Environment Variables
+
+| Variable | Required | Description |
+|---|---|---|
+| `FANTRAX_LEAGUE_ID` | Yes | Fantrax league ID (found in the league URL) |
+
+The server is **league-scoped, not user-scoped**. Multiple league members can share one deployment. Each caller supplies their own `teamId` as a tool parameter when needed.
 
 ## Tools
 
 ### Atomic Tools (`src/tools/atomic.ts`)
 
-| Tool | Fantrax Method | Auth | Parameters |
+| Tool | Client Method | Parameters | Purpose |
 |---|---|---|---|
-| `get_league_info` | `getFantasyLeagueInfo` | Yes | none |
-| `get_standings` | `getStandings` | Yes | `view?: string` |
-| `get_roster` | `getTeamRosterInfo` | Yes | `teamId: string`, `scoringPeriod?: number` |
-| `get_scoring` | `getLiveScoringStats` | Yes | `date?: string`, `period?: number` |
-| `get_transactions` | `getPendingTransactions` + `getTransactionDetailsHistory` | Yes | `maxResults?: number` |
-| `get_trade_blocks` | `getTradeBlocks` | Yes | none |
-| `get_player_info` | `GET /fxea/general/getAdp?sport=MLB` | No | `position?: string`, `limit?: number`, `order?: string` |
-| `get_player_ids` | `GET /fxea/general/getPlayerIds?sport=MLB` | No | none |
+| `get_league_info` | `getLeagueInfo` | none | Full league info including teams, roster settings, player statuses |
+| `get_league_summary` | `getLeagueInfo` | none | Lightweight: name, season, dates, roster settings — no playerInfo map |
+| `get_standings` | `getStandings` | none | Current standings with rank, points, win% per team |
+| `list_teams` | `getStandings` | none | Lightweight: teamId, teamName, rank only |
+| `get_all_rosters` | `getAllRosters` | none | Every team's roster with player IDs, positions, salaries |
+| `get_team_roster` | `getTeamRoster` | `teamId: string` | Single team's roster — avoids sending all 13 when one is needed |
+| `get_free_agents` | `getFreeAgents` | none | All available free agents with name, MLB team, position |
+| `get_player_info` | `getPlayerInfo` | `position?: string`, `limit?: number`, `order?: string` | MLB player ADP data |
+| `get_scoring_categories` | `getScoringCategories` | none | League scoring categories (R, HR, OBP, TB, SB, K, ERA, WHIP, etc.) |
 
 ### Composite Tools (`src/tools/composite.ts`)
 
 | Tool | Calls | Purpose |
 |---|---|---|
-| `get_team_overview` | `get_roster` + `get_scoring` + `get_standings` | Full snapshot of a team's roster, recent scoring, and standings position |
-| `evaluate_trade_targets` | `get_trade_blocks` + `get_player_info` | Trade block players enriched with ADP data |
-| `get_waiver_candidates` | `get_transactions` + `get_player_info` | Pending waiver wire pickups enriched with ADP context |
-| `compare_players` | `get_player_info` (x2, filtered by name) | Side-by-side ADP, position, and stats for two named players |
+| `get_team_overview` | `getAllRosters` + `getStandings` + `getScoringCategories` | Roster + standings position + scoring categories for one team |
+| `get_enriched_rosters` | `getAllRosters` + `getPlayerInfo` | All rosters enriched with player names and ADP |
+| `get_waiver_candidates` | `getFreeAgents` + `getPlayerInfo` + `getScoringCategories` | Free agents joined with ADP, ranked by ADP, with scoring context |
+| `find_trade_targets` | `getAllRosters` + `getPlayerInfo` + `getStandings` | Trade targets by position, with optional team/status filters |
+| `compare_players` | `getPlayerInfo` | Side-by-side ADP and position for two named players |
 
-## KentonAI Standards Compliance
+## `player-ids.json`
 
-- **Named exports only** — no `export default` anywhere; no `index.ts` barrel/re-export files
-- **Pure functions** — all data transformation functions are pure (no side effects, only use arguments); HTTP calls isolated in `FantraxClient`
-- **Early returns** — all tool handlers guard on missing/invalid input before main logic
-- **Low complexity** — functions ≤20 lines, ≤4 parameters, ≤3 nesting levels; single responsibility per function
-- **Un-DRY tests** — one explicit `it()` per branch; no loops or conditional logic in test files; Arrange-Act-Assert structure throughout
+`src/player-ids.json` maps Fantrax player IDs to names, teams, and positions. It is **generated at build time** by `scripts/generate-player-ids.ts` (run via the `prebuild` npm script) and is not committed to version control.
 
-## Authentication Flow
-
-1. User copies `FX_SESS` cookie value from browser DevTools after logging into Fantrax
-2. Sets `FANTRAX_SESSION_COOKIE=<value>` in their MCP server config (Claude Desktop / VS Code)
-3. Sets `FANTRAX_LEAGUE_ID=<leagueId>` in the same config
-4. `FantraxClient` constructor reads both; throws `Error` with clear message if either is missing
+To regenerate locally: `pnpm generate-player-ids`
 
 ## Error Handling
 
-- Missing env vars → throw at startup (fail fast)
-- HTTP errors → throw with status code and Fantrax response body
-- Tool handlers use early returns to validate inputs before calling the client
-- No silent failures; all errors propagate to MCP caller
+- Missing `FANTRAX_LEAGUE_ID` → throws on first API call (fail fast)
+- HTTP errors → throws with status code and Fantrax response body
+- Invalid API response shapes → Zod parse errors returned as tool error strings (not thrown)
+- All errors propagate clearly to MCP caller
 
-## Testing Strategy
+## Running the Server
 
-- **`client.test.ts`** — mock `fetch`; test each client method returns expected shape; test auth header is set; test error cases
+**Development:** `pnpm dev` — starts Next.js dev server; MCP endpoint at `/api/mcp`
+
+**Production:** Deploy to Vercel. The MCP endpoint is the Next.js API route at `/api/[transport]`.
+
+**Connect via Cursor/Claude Desktop:** Point your MCP config at the deployed URL or `http://localhost:3000/api` for local dev.
+
+## Testing
+
+- **`client.test.ts`** — mock `fetch`; test each client method returns expected shape; test error cases
 - **`atomic.test.ts`** — mock `FantraxClient`; test each tool handler with valid input, missing input, and error from client
-- **`composite.test.ts`** — mock `FantraxClient`; test each composite merges data correctly; test partial failure cases
+- **`composite.test.ts`** — mock `FantraxClient`; test each composite merges data correctly; test Zod validation errors; test partial failure cases
 
-## Verification
-
-1. `npm run build` — TypeScript compiles with no errors
-2. Set `FANTRAX_SESSION_COOKIE` and `FANTRAX_LEAGUE_ID` in environment
-3. Run server locally: `node dist/index.js`
-4. Connect via Claude Desktop MCP config; call `get_league_info` — should return league name and teams
-5. Call `get_standings` — should return ordered team list
-6. Call `compare_players` with two MLB player names — should return side-by-side ADP
-7. `npm test` — all tests pass
+Run: `pnpm test`

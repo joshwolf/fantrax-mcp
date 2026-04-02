@@ -12,13 +12,33 @@ export async function getLeagueInfoHandler(client: FantraxClient): Promise<ToolR
   return toJson(data);
 }
 
+export async function getLeagueSummaryHandler(client: FantraxClient): Promise<ToolResponse> {
+  const data = await client.getLeagueInfo() as Record<string, unknown>;
+  const { leagueName, seasonYear, startDate, endDate, rosterInfo, draftSettings } = data;
+  return toJson({ leagueName, seasonYear, startDate, endDate, rosterInfo, draftSettings });
+}
+
 export async function getStandingsHandler(client: FantraxClient): Promise<ToolResponse> {
   const data = await client.getStandings();
   return toJson(data);
 }
 
+export async function listTeamsHandler(client: FantraxClient): Promise<ToolResponse> {
+  const data = await client.getStandings() as Array<Record<string, unknown>>;
+  const teams = data.map(({ teamId, teamName, rank }) => ({ teamId, teamName, rank }));
+  return toJson(teams);
+}
+
 export async function getAllRostersHandler(client: FantraxClient): Promise<ToolResponse> {
   const data = await client.getAllRosters();
+  return toJson(data);
+}
+
+export async function getTeamRosterHandler(
+  client: FantraxClient,
+  teamId: string,
+): Promise<ToolResponse> {
+  const data = await client.getTeamRoster(teamId);
   return toJson(data);
 }
 
@@ -45,9 +65,16 @@ export async function getScoringCategoriesHandler(client: FantraxClient): Promis
 export function registerAtomicTools(server: McpServer, client: FantraxClient): void {
   server.tool(
     "get_league_info",
-    "Get fantasy league info including teams, roster settings, and player statuses",
+    "Get full fantasy league info including teams, roster settings, and player statuses. Prefer get_league_summary when you only need high-level league details.",
     {},
     () => getLeagueInfoHandler(client),
+  );
+
+  server.tool(
+    "get_league_summary",
+    "Get lightweight league info: name, season year, start/end dates, roster settings, and draft settings. Use this instead of get_league_info when you don't need the full player status map.",
+    {},
+    () => getLeagueSummaryHandler(client),
   );
 
   server.tool(
@@ -58,10 +85,26 @@ export function registerAtomicTools(server: McpServer, client: FantraxClient): v
   );
 
   server.tool(
+    "list_teams",
+    "Get a lightweight list of all teams: teamId, teamName, and rank. Use this to look up teamIds before calling tools that require one.",
+    {},
+    () => listTeamsHandler(client),
+  );
+
+  server.tool(
     "get_all_rosters",
-    "Get every team's current roster in the league, including player IDs, positions, and salary",
+    "Get every team's current roster in the league, including player IDs, positions, and salary. Prefer get_team_roster when you only need one team.",
     {},
     () => getAllRostersHandler(client),
+  );
+
+  server.tool(
+    "get_team_roster",
+    "Get a single team's current roster including player IDs, positions, and salary. Use this instead of get_all_rosters when you only need one team.",
+    {
+      teamId: z.string().describe("The Fantrax team ID"),
+    },
+    ({ teamId }) => getTeamRosterHandler(client, teamId),
   );
 
   server.tool(

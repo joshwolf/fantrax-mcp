@@ -40,6 +40,15 @@ export class FantraxClient {
     return this.get("getTeamRosters", { leagueId: this.leagueId });
   }
 
+  async getTeamRoster(teamId: string): Promise<unknown> {
+    const data = await this.getAllRosters() as { rosters?: Record<string, unknown> };
+    return data.rosters?.[teamId] ?? null;
+  }
+
+  async getPlayerIds(): Promise<unknown> {
+    return this.get("getPlayerIds", { sport: "MLB" });
+  }
+
   async getPlayerInfo(position?: string, limit?: number, order?: string): Promise<unknown> {
     const params: Record<string, string> = { sport: "MLB" };
     if (position !== undefined) params.position = position;
