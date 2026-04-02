@@ -6,14 +6,13 @@ export class FantraxClient {
   private readonly leagueId: string;
 
   constructor() {
-    const leagueId = process.env.FANTRAX_LEAGUE_ID;
-    if (!leagueId) {
-      throw new Error("FANTRAX_LEAGUE_ID env var is required");
-    }
-    this.leagueId = leagueId;
+    this.leagueId = process.env.FANTRAX_LEAGUE_ID || "missing-league-id";
   }
 
   private async get(path: string, params: Record<string, string> = {}): Promise<unknown> {
+    if (this.leagueId === "missing-league-id") {
+      throw new Error("FANTRAX_LEAGUE_ID env var is required");
+    }
     const url = new URL(`${PUBLIC_BASE}/${path}`);
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value);
