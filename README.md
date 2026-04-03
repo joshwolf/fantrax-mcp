@@ -44,7 +44,7 @@ pnpm mcp:stdio
 }
 ```
 
-Adjust `command`/`args` if you prefer `npx tsx src/mcp-stdio.ts` with `cwd` set to this repo.
+Prefer the example above: it runs the lockfile-pinned `tsx` from this repo. Using `npx tsx …` for the local server works after `pnpm install`, but `npx` adds resolver/caching overhead on each spawn compared to `pnpm mcp:stdio` or `pnpm exec tsx src/mcp-stdio.ts`. If you use npm, `npm run mcp:stdio` with the same `cwd` is the analogous choice.
 
 **Important:** Do not log to stdout in the stdio server; MCP uses stdout for the protocol.
 
