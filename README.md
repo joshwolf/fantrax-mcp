@@ -15,6 +15,34 @@ MCP server for [Fantrax](https://www.fantrax.com/) fantasy baseball. It exposes 
 
 The app does not load `.env` automatically for the stdio entrypoint; set variables in your shell or in your MCP client config (`env`).
 
+## MCP tools
+
+All tools use the league configured by `FANTRAX_LEAGUE_ID`. **Atomic** tools map roughly one-to-one to Fantrax data; **composite** tools combine several calls for common workflows.
+
+### Atomic
+
+| Tool | Description |
+|------|-------------|
+| `get_league_info` | Full league info: teams, roster settings, player statuses. Prefer `get_league_summary` when you only need high-level details. |
+| `get_league_summary` | Lightweight league info: name, season year, start/end dates, roster and draft settings. |
+| `get_standings` | Standings: rank, points, and win percentage per team. |
+| `list_teams` | All teams with `teamId`, `teamName`, and rank — use before tools that require a team ID. |
+| `get_all_rosters` | Every team’s roster (player IDs, positions, salary). Prefer `get_team_roster` for a single team. |
+| `get_team_roster` | One team’s roster (`teamId`). |
+| `get_free_agents` | Free agents with name, MLB team, position, and eligible fantasy positions. |
+| `get_player_info` | MLB player ADP-style data for ranking and valuation. Optional: `position`, `limit`, `order`. |
+| `get_scoring_categories` | Stats that count in this league — use when comparing or recommending players. |
+
+### Composite
+
+| Tool | Description |
+|------|-------------|
+| `get_enriched_rosters` | All rosters enriched with player names and ADP. |
+| `find_trade_targets` | Trade targets by position and max ADP (`teamId`, `position`, `maxAdp`; optional status exclusions and whether to search all teams vs bottom half). |
+| `get_team_overview` | One team’s roster, standings position, and league scoring categories (`teamId`). |
+| `get_waiver_candidates` | Free agents ranked by ADP, with scoring categories — for add/drop decisions. |
+| `compare_players` | Side-by-side comparison for two players by name, with league scoring context. |
+
 ## Run locally (stdio MCP)
 
 Use this when your client spawns a subprocess and talks MCP over stdin/stdout (e.g. Cursor, Claude Desktop).
