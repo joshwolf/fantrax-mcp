@@ -93,6 +93,10 @@ If your client only supports stdio, proxy the remote server with [mcp-remote](ht
 
 Official reference: [Deploying Next.js to Vercel](https://vercel.com/docs/frameworks/nextjs).
 
+## Player data at build time
+
+`pnpm build` runs **`prebuild`** first (`package.json`), which executes `scripts/generate-player-ids.ts`. That script **fetches** the MLB player ID catalogue from Fantrax’s public `getPlayerIds` API over HTTPS and writes `src/player-ids.json`. The build host must allow outbound network access; if the fetch fails, the build exits with an error. This step does **not** use `FANTRAX_LEAGUE_ID` (that variable is only for runtime MCP requests against your league).
+
 ## Development
 
 | Script | Purpose |
@@ -102,11 +106,3 @@ Official reference: [Deploying Next.js to Vercel](https://vercel.com/docs/framew
 | `pnpm build` | Production build (`prebuild` regenerates player IDs) |
 | `pnpm test` | Vitest |
 | `pnpm typecheck` | `tsc --noEmit` |
-
-## SDK version
-
-This project depends on `@modelcontextprotocol/sdk`. `mcp-handler` recommends keeping the SDK updated (see their [README](https://github.com/vercel/mcp-handler)). Refresh the lockfile periodically with `pnpm update @modelcontextprotocol/sdk` if you want to stay aligned with their supported range.
-
-## Further detail
-
-See [2026-04-01-fantrax-mcp-design.md](./2026-04-01-fantrax-mcp-design.md) for architecture, tool list, and API notes.
