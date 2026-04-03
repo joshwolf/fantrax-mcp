@@ -8,6 +8,7 @@
     "prebuild": "tsx scripts/generate-player-ids.ts",
     "build": "next build",
     "dev": "next dev",
+    "mcp:stdio": "tsx src/mcp-stdio.ts",
     "typecheck": "tsc",
     "test": "vitest run"
   },

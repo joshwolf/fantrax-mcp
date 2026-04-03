@@ -1,7 +1,6 @@
 import { createMcpHandler } from "mcp-handler";
 import { FantraxClient } from "../../../src/client";
-import { registerAtomicTools } from "../../../src/tools/atomic";
-import { registerCompositeTools } from "../../../src/tools/composite";
+import { registerFantraxTools } from "../../../src/register-fantrax-tools";
 
 export const maxDuration = 60;
 
@@ -9,8 +8,7 @@ const client = new FantraxClient();
 
 const handler = createMcpHandler(
   (server) => {
-    registerAtomicTools(server, client);
-    registerCompositeTools(server, client);
+    registerFantraxTools(server, client);
   },
   {},
   { basePath: "/api" },
