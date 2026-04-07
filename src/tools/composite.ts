@@ -77,6 +77,8 @@ export async function getTeamOverviewHandler(
 
 export async function getWaiverCandidatesHandler(
   client: FantraxClient,
+  position?: string,
+  maxAdp?: number,
   cache: RequestCache = {},
 ): Promise<ToolResponse> {
   const [freeAgentsData, playerInfoData, scoringCategories] = await Promise.all([
@@ -105,10 +107,90 @@ export async function getWaiverCandidatesHandler(
       const adp = typeof pInfo.ADP === "number" ? pInfo.ADP : 9999;
       return [{ ...fa, ADP: pInfo.ADP, adpSortKey: adp }];
     })
+    .filter((c) => {
+      if (position && position !== "ANY") {
+        const eligible = c.eligiblePositions.split(",");
+        if (!eligible.includes(position) && c.position !== position) return false;
+      }
+      if (maxAdp !== undefined && c.adpSortKey < 9999 && c.adpSortKey > maxAdp) return false;
+      return true;
+    })
     .sort((a, b) => a.adpSortKey - b.adpSortKey)
     .map(({ adpSortKey: _dropped, ...rest }) => rest);
 
   return toJson({ scoringCategories, candidates });
+}
+
+export async function findPlayerHandler(
+  client: FantraxClient,
+  playerName: string,
+  cache: RequestCache = {},
+): Promise<ToolResponse> {
+  const [rostersData, playerInfoData, freeAgentsData] = await Promise.all([
+    cachedGet(cache, "allRosters", () => client.getAllRosters()),
+    cachedGet(cache, "playerInfo", () => client.getPlayerInfo(undefined, 2000)),
+    cachedGet(cache, "freeAgents", () => client.getFreeAgents()),
+  ]);
+
+  const playerInfoResult = parsePlayerInfo(playerInfoData);
+  if (typeof playerInfoResult === "string") return toToolError(playerInfoResult);
+
+  const rosters = rostersData as { rosters?: Record<string, any> };
+  const playerMap = new Map(playerInfoResult.map((p) => [p.id, p]));
+  const query = playerName.toLowerCase();
+
+  const results: Array<{
+    name: string;
+    team: string;
+    status: string;
+    salary: number | null;
+    position: string;
+    eligiblePositions?: string;
+    ADP: number | string;
+  }> = [];
+
+  if (rosters.rosters) {
+    for (const [, team] of Object.entries(rosters.rosters)) {
+      const t = team as { teamName: string; rosterItems?: any[] };
+      for (const item of t.rosterItems ?? []) {
+        const pInfo = playerMap.get(item.id);
+        const name = pInfo?.name ?? "";
+        if (!name.toLowerCase().includes(query)) continue;
+        results.push({
+          name,
+          team: t.teamName,
+          status: item.status ?? "UNKNOWN",
+          salary: item.salary ?? null,
+          position: item.position,
+          ADP: pInfo?.ADP ?? "N/A",
+        });
+      }
+    }
+  }
+
+  const freeAgents = freeAgentsData as Array<{
+    id: string;
+    name: string;
+    team: string | null;
+    position: string;
+    eligiblePositions: string;
+  }>;
+
+  for (const fa of freeAgents) {
+    if (!fa.name.toLowerCase().includes(query)) continue;
+    const pInfo = playerMap.get(fa.id);
+    results.push({
+      name: fa.name,
+      team: fa.team ?? "Free Agent",
+      status: "FA",
+      salary: null,
+      position: fa.position,
+      eligiblePositions: fa.eligiblePositions,
+      ADP: pInfo?.ADP ?? "N/A",
+    });
+  }
+
+  return toJson({ query: playerName, results });
 }
 
 export async function comparePlayersHandler(
@@ -284,9 +366,31 @@ export function registerCompositeTools(server: McpServer, client: FantraxClient)
 
   server.tool(
     "get_waiver_candidates",
-    "Get all free agents ranked by ADP, enriched with player names and league scoring categories — use this to find and rank add/drop candidates",
-    {},
-    () => getWaiverCandidatesHandler(client),
+    "Get free agents ranked by ADP, enriched with player names and league scoring categories — use this to find and rank add/drop candidates",
+    {
+      position: z
+        .string()
+        .optional()
+        .describe(
+          "Filter by eligible position (e.g. '1B', 'CI', 'SP', 'OF'). Omit or pass 'ANY' to return all positions.",
+        ),
+      maxAdp: z
+        .number()
+        .optional()
+        .describe("Only return players with ADP at or below this value"),
+    },
+    ({ position, maxAdp }) => getWaiverCandidatesHandler(client, position, maxAdp),
+  );
+
+  server.tool(
+    "find_player",
+    "Find a player by name — returns their current team, roster status, salary, position, and ADP. Searches both active rosters and free agents. Use this before any drop/trade decision to confirm roster ownership and salary.",
+    {
+      playerName: z
+        .string()
+        .describe("Player name to search (partial match, case-insensitive)"),
+    },
+    ({ playerName }) => findPlayerHandler(client, playerName),
   );
 
   server.tool(
