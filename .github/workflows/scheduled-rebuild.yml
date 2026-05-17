@@ -1,0 +1,16 @@
+name: Scheduled production rebuild
+
+on:
+  schedule:
+    # Mon & Thu — 11:00 UTC = 6:00 AM EST / 7:00 AM EDT
+    - cron: "0 11 * * 1,4"
+  workflow_dispatch:
+
+jobs:
+  trigger-vercel-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel production deploy
+        run: curl -fsS -X POST "$VERCEL_DEPLOY_HOOK_URL"
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}

@@ -121,6 +121,19 @@ If your client only supports stdio, proxy the remote server with [mcp-remote](ht
 
 Official reference: [Deploying Next.js to Vercel](https://vercel.com/docs/frameworks/nextjs).
 
+### Scheduled rebuilds
+
+Production is redeployed automatically every **Monday and Thursday** at approximately **6:00 AM Eastern** via [`.github/workflows/scheduled-rebuild.yml`](.github/workflows/scheduled-rebuild.yml). The workflow POSTs to a Vercel Deploy Hook, which runs a full build (including `prebuild` player ID refresh).
+
+**One-time setup:**
+
+1. In Vercel: **Settings → Git → Deploy Hooks** — create a hook named e.g. `scheduled-production-rebuild` on branch `main` for **Production**.
+2. In GitHub: **Settings → Secrets and variables → Actions** — add `VERCEL_DEPLOY_HOOK_URL` with the hook URL.
+
+**Manual trigger:** Actions → **Scheduled production rebuild** → **Run workflow**.
+
+**Timezone note:** GitHub cron uses UTC only (no DST). The schedule `0 11 * * 1,4` runs at 6:00 AM EST and 7:00 AM EDT. To target 6:00 AM during daylight saving instead, change the cron to `0 10 * * 1,4` (5:00 AM in winter).
+
 ## Player data at build time
 
 `pnpm build` runs **`prebuild`** first (`package.json`), which executes `scripts/generate-player-ids.ts`. That script **fetches** the MLB player ID catalogue from Fantrax’s public `getPlayerIds` API over HTTPS and writes `src/player-ids.json`. The build host must allow outbound network access; if the fetch fails, the build exits with an error. This step does **not** use `FANTRAX_LEAGUE_ID` (that variable is only for runtime MCP requests against your league).
